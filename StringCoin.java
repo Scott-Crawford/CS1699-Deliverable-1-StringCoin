@@ -10,75 +10,72 @@ public class StringCoin{
     private static final String BILL_PRIVATE_KEY = "3081c60201003081a806072a8648ce38040130819c024100fca682ce8e12caba26efccf7110e526db078b05edecbcd1eb4a208f3ae1617ae01f35b91a47e6df63413c5e12ed0899bcd132acd50d99151bdc43ee737592e17021500962eddcc369cba8ebb260ee6b6a126d9346e38c50240678471b27a9cf44ee91a49c5147db1a9aaf244f05a434d6486931d2d14271b9e35030b71fd73da179069b32e2935630e1c2062354d0da20a6c416e50be794ca404160214556d46e1888b30bccf9c4a5ea71b41c107b5d219";
     
     public static void main(String[] args) throws Exception{
-        if(args.length!=1){
-            System.out.println("Give a file");
-            System.exit(0);
+        try{
+            if(args.length!=1){
+                throw new InvalidDataException("No file provided.");
+            }
+            BufferedReader infile = new BufferedReader(new FileReader(args[0]));
+            HashMap<String, String> coinTracker= new HashMap<String, String>();
+            int blockCount = 0;
+            String prevBlockHash = "0";
+            while (infile.ready()) {
+                String block  = new String(infile.readLine().getBytes());
+                String[] blockElements = block.split(",");
+                if(blockCount == 0){
+                    if(!blockElements[0].equals("0")){
+                        throw new InvalidDataException("First element of the Genesis block is not equal to 0.");
+                    }
+                }
+                else{
+                    if(!blockElements[0].equals(prevBlockHash)){
+                        throw new InvalidDataException("Invalid hash: " + blockElements[0] + " does not match " + prevBlockHash+".");
+                    }
+                }
+                if(blockElements[1].equals("CREATE")){
+                    if(coinTracker.containsKey(blockElements[2])){
+                        throw new InvalidDataException("Invalid coin: Coin " + blockElements[2] + " already exists.");
+                    }
+                    else if(!verifyMessage(blockElements[2],blockElements[3],BILL_PUBLIC_KEY)){
+                        throw new InvalidDataException("Invalid coin " + blockElements[2] + ".");
+                    }
+                    else{
+                        String message = blockElements[0]+","+blockElements[1]+","+blockElements[2]+","+blockElements[3];
+                        if(!verifyMessage(message, blockElements[4], BILL_PUBLIC_KEY)){
+                            throw new InvalidDataException("Invalid line " + message + ".");
+                        }
+                        coinTracker.put(blockElements[2], BILL_PUBLIC_KEY);
+                    }
+                }
+                else if(blockElements[1].equals("TRANSFER")){
+                    if(!coinTracker.containsKey(blockElements[2])){
+                        throw new InvalidDataException("Invalid coin: Coin " + blockElements[2] + "doesn't exist.");
+                    }
+                    else{
+                        String coinHolder = coinTracker.get(blockElements[2]);
+                        String message = blockElements[0]+","+blockElements[1]+","+blockElements[2]+","+blockElements[3];
+                        if(!verifyMessage(message, blockElements[4], coinHolder)){
+                            throw new InvalidDataException("Invalid line " + message + ".");
+                        }
+                        coinTracker.replace(blockElements[2], blockElements[3]);
+                    }
+                }
+                else{
+                    throw new InvalidDataException("Invalid block type.");
+                }
+                prevBlockHash = calculateHash(block);
+                blockCount++;
+            }	
+            infile.close();
+            ArrayList<String> coins = new ArrayList<String>();
+            coins.addAll(coinTracker.keySet());
+            Collections.sort(coins);
+            for(String coin : coins){
+                System.out.println("Coin "+coin+" / Owner "+coinTracker.get(coin));
+            }
         }
-        BufferedReader infile = new BufferedReader(new FileReader(args[0]));
-        HashMap<String, String> coinTracker= new HashMap<String, String>();
-        int blockCount = 0;
-        String prevBlockHash = "";
-        while (infile.ready()) {
-            String block  = infile.readLine();
-            String[] blockElements = block.split(",");
-            if(blockCount == 0){
-                if(!blockElements[0].equals("0")){
-                    System.out.println("Bad Genesis");
-                    System.exit(0);
-                }
-            }
-            else{
-                if(!blockElements[0].equals(prevBlockHash)){
-                    System.out.println("Bad Prev Hash");
-                    System.exit(0);
-                }
-            }
-            if(blockElements[1].equals("CREATE")){
-                if(coinTracker.containsKey(blockElements[2])){
-                    System.out.println("Creating an exisiting coin");
-                    System.exit(0);
-                }
-                else if(!verifyMessage(blockElements[2],blockElements[3],BILL_PUBLIC_KEY)){
-                    System.out.println("Invalid Coin Creation");
-                    System.exit(0);
-                }
-                else{
-                    String message = blockElements[0]+","+blockElements[1]+","+blockElements[2]+","+blockElements[3];
-                    if(!verifyMessage(message, blockElements[4], BILL_PUBLIC_KEY)){
-                        System.out.println("Not a valid signature");
-                        System.exit(0);
-                    }
-                    coinTracker.put(blockElements[2], BILL_PUBLIC_KEY);
-                }
-            }
-            else if(blockElements[1].equals("TRANSFER")){
-                if(!coinTracker.containsKey(blockElements[2])){
-                    System.out.println("This coin doesn't exist");
-                    System.exit(0);
-                }
-                else{
-                    String coinHolder = coinTracker.get(blockElements[2]);
-                    String message = blockElements[0]+","+blockElements[1]+","+blockElements[2]+","+blockElements[3];
-                    if(!verifyMessage(message, blockElements[4], coinHolder)){
-                        System.out.println("Not a valid signature");
-                        System.exit(0);
-                    }
-                    coinTracker.replace(blockElements[2], blockElements[3]);
-                }
-            }
-            else{
-                System.out.println("WHAT ARE YOU DOING");
-                System.exit(0);
-            }
-            prevBlockHash = calculateHash(block);
-            blockCount++;
-        }	
-		infile.close();
-        ArrayList<String> coins = new ArrayList<String>();
-        coins.addAll(coinTracker.keySet());
-        Collections.sort(coins);
-        for(String coin : coins){
-            System.out.println("Coin "+coin+" / Owner "+coinTracker.get(coin));
+        catch(InvalidDataException e){
+            e.printStackTrace();
+            System.exit(1);
         }
     }
     
@@ -138,5 +135,11 @@ public class StringCoin{
     	X509EncodedKeySpec spec = new X509EncodedKeySpec(data);
     	KeyFactory fact = KeyFactory.getInstance("DSA");
     	return fact.generatePublic(spec);
+    }
+}
+
+class InvalidDataException extends Exception{
+    public InvalidDataException(String errorMessage){
+        super(errorMessage);
     }
 }
